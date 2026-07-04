@@ -1,1 +1,0 @@
-import{g as l,p as a,d as n}from"./index-h9-0ayKR.js";function r(){return l("/playlists")}function e(s){return l(`/playlists/${s}`)}function o(s){return a("/playlists",s)}function u(s){return n(`/playlists/${s}`)}function y(s,t){return a(`/playlists/${s}/songs`,{song_id:t})}function g(s,t){return n(`/playlists/${s}/songs/${t}`)}export{e as a,y as b,o as c,u as d,r as g,g as r};
