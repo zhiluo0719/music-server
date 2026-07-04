@@ -1,0 +1,11 @@
+{
+    "deploy":  {
+                   "healthcheckTimeout":  30,
+                   "restartPolicyType":  "ON_FAILURE",
+                   "healthcheckPath":  "/api/songs"
+               },
+    "build":  {
+                  "builder":  "DOCKERFILE",
+                  "dockerfilePath":  "Dockerfile"
+              }
+}
