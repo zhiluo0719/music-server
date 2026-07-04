@@ -25,11 +25,14 @@ func main() {
 		log.SetOutput(multi)
 		gin.DefaultWriter = multi
 		gin.DefaultErrorWriter = multi
+	} else {
+		log.Printf("无法创建日志文件: %v, 使用标准输出", err)
 	}
 
 	dsn := "./data/music.db"
-	if envDSN := os.Getenv("DB_DSN"); envDSN != "" {
+	if envDSN := os.Getenv("DATABASE_URL"); envDSN != "" {
 		dsn = envDSN
+		log.Printf("检测到 Railway PostgreSQL: %s...", dsn[:min(len(dsn), 50)])
 	}
 
 	absDSN, _ := filepath.Abs(dsn)
