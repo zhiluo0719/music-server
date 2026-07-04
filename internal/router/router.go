@@ -1,9 +1,11 @@
 ﻿package router
 
 import (
+	"log"
 	"music-backend/internal/handler"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,12 +24,28 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
+func requestLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+		if c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Writer.Status() >= 400 {
+			log.Printf("[REQ] %s %s -> %d (%v)", c.Request.Method, c.Request.URL.Path, c.Writer.Status(), duration)
+		}
+	}
+}
+
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
 	r.Use(corsMiddleware())
+	r.Use(requestLogger())
 
-	r.MaxMultipartMemory = 100 << 20
+	r.MaxMultipartMemory = 200 << 20
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "time": time.Now().Format(time.RFC3339)})
+	})
 
 	r.Static("/uploads", "./uploads")
 
@@ -68,6 +86,7 @@ func SetupRouter() *gin.Engine {
 		if _, err := os.Stat(assetsDir); err == nil {
 			r.Static("/assets", assetsDir)
 		}
+		r.StaticFile("/favicon.ico", filepath.Join(publicDir, "favicon.ico"))
 		r.StaticFile("/", filepath.Join(publicDir, "index.html"))
 		r.NoRoute(func(c *gin.Context) {
 			c.File(filepath.Join(publicDir, "index.html"))
