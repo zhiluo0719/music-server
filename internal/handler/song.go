@@ -3,6 +3,7 @@
 import (
 	"fmt"
 	"io"
+	"log"
 	"music-backend/internal/model"
 	"music-backend/internal/service"
 	"music-backend/pkg/response"
@@ -31,6 +32,7 @@ func (h *SongHandler) List(c *gin.Context) {
 	}
 	songs, total, err := h.svc.List(q)
 	if err != nil {
+		log.Printf("[ERROR] 查询歌曲列表失败: %v", err)
 		response.InternalError(c, "查询歌曲列表失败")
 		return
 	}
@@ -58,21 +60,30 @@ func (h *SongHandler) GetByID(c *gin.Context) {
 func (h *SongHandler) Create(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
+		log.Printf("[UPLOAD] 获取文件失败: %v", err)
 		response.BadRequest(c, "请选择音频文件")
 		return
 	}
 
+	log.Printf("[UPLOAD] 收到文件: %s, 大小: %d bytes", file.Filename, file.Size)
+
 	audioDir := "./uploads/audio"
-	os.MkdirAll(audioDir, 0755)
+	if err := os.MkdirAll(audioDir, 0755); err != nil {
+		log.Printf("[UPLOAD] 创建上传目录失败: %v", err)
+		response.InternalError(c, "创建上传目录失败")
+		return
+	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	fileName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	savePath := filepath.Join(audioDir, fileName)
 
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		response.InternalError(c, "文件保存失败")
+		log.Printf("[UPLOAD] 保存文件失败: %v", err)
+		response.InternalError(c, "文件保存失败: "+err.Error())
 		return
 	}
+	log.Printf("[UPLOAD] 文件已保存: %s", savePath)
 
 	song := model.Song{
 		Title:      c.PostForm("title"),
@@ -101,10 +112,12 @@ func (h *SongHandler) Create(c *gin.Context) {
 	}
 
 	if err := h.svc.Create(&song); err != nil {
+		log.Printf("[UPLOAD] 保存数据库失败: %v", err)
 		os.Remove(savePath)
-		response.InternalError(c, "保存歌曲信息失败")
+		response.InternalError(c, "保存歌曲信息失败: "+err.Error())
 		return
 	}
+	log.Printf("[UPLOAD] 歌曲创建成功: ID=%d, 标题=%s", song.ID, song.Title)
 
 	response.Success(c, song)
 }
@@ -183,9 +196,26 @@ func (h *SongHandler) Stream(c *gin.Context) {
 	defer file.Close()
 
 	stat, _ := file.Stat()
-	c.Header("Content-Type", "audio/"+song.FileFormat)
+	// fix content-type for common audio formats
+	contentType := "audio/mpeg"
+	switch song.FileFormat {
+	case "wav":
+		contentType = "audio/wav"
+	case "flac":
+		contentType = "audio/flac"
+	case "ogg":
+		contentType = "audio/ogg"
+	case "aac":
+		contentType = "audio/aac"
+	case "m4a":
+		contentType = "audio/mp4"
+	case "wma":
+		contentType = "audio/x-ms-wma"
+	}
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Length", strconv.FormatInt(stat.Size(), 10))
 	c.Header("Accept-Ranges", "bytes")
+	c.Header("Cache-Control", "public, max-age=86400")
 
 	io.Copy(c.Writer, file)
 }
