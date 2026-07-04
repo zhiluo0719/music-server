@@ -1,0 +1,12 @@
+﻿server:
+  port: 8080
+  mode: debug
+
+database:
+  driver: sqlite
+  dsn: ./data/music.db
+
+upload:
+  audio_path: ./uploads/audio
+  cover_path: ./uploads/covers
+  max_file_size: 104857600
