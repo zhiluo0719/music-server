@@ -14,6 +14,5 @@ WORKDIR /app
 COPY --from=builder /app/server .
 COPY --from=builder /app/public ./public
 RUN mkdir -p uploads/audio uploads/covers data logs
-ENV PORT=3001
 EXPOSE 3001
 CMD ["./server"]
