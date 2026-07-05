@@ -2,22 +2,25 @@
 set -e
 echo "=== Music Server 部署 ==="
 
-# 安装依赖
-echo "[0/5] 安装依赖..."
-yum install -y git 2>/dev/null || apt-get install -y git 2>/dev/null
-
-# 安装 Docker
-if ! command -v docker &>/dev/null; then
-    echo "[1/5] 安装 Docker..."
-    yum install -y yum-utils
-    yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-    yum install -y docker-ce docker-ce-cli containerd.io
-    systemctl start docker
-    systemctl enable docker
-    echo "Docker: $(docker --version)"
-else
-    echo "[1/5] Docker 已安装: $(docker --version)"
+# 配置 Docker 国内镜像加速
+echo "[0/5] 配置 Docker 镜像加速..."
+mkdir -p /etc/docker
+if [ ! -f /etc/docker/daemon.json ]; then
+    cat > /etc/docker/daemon.json << 'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://docker.1ms.run"
+  ]
+}
+EOF
+    systemctl restart docker 2>/dev/null || true
+    echo "镜像加速已配置"
 fi
+
+# 安装 Git
+echo "[1/5] 安装 Git..."
+yum install -y git 2>/dev/null || true
 
 # 创建目录
 echo "[2/5] 准备目录..."
@@ -32,7 +35,7 @@ else
 fi
 
 # 构建
-echo "[4/5] 构建镜像..."
+echo "[4/5] 构建镜像(首次较慢，请耐心等待)..."
 cd /data/music/music-server
 docker build -t music-server .
 
@@ -47,6 +50,9 @@ docker run -d --name music-server --restart always \
     -v /data/music/logs:/app/logs \
     -e PORT=3001 -e TZ=Asia/Shanghai \
     music-server
+
+# 开放端口
+firewall-cmd --add-port=3001/tcp --permanent 2>/dev/null && firewall-cmd --reload 2>/dev/null || true
 
 echo ""
 echo "部署完成! http://119.45.205.187:3001"
