@@ -1,59 +1,85 @@
 #!/bin/bash
 set -e
-echo "=== Music Server 部署 ==="
+echo "=== Music Server 部署 (无 Docker 版) ==="
 
-# 配置 Docker 国内镜像加速
-echo "[0/5] 配置 Docker 镜像加速..."
-mkdir -p /etc/docker
-if [ ! -f /etc/docker/daemon.json ]; then
-    cat > /etc/docker/daemon.json << 'EOF'
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://docker.1ms.run"
-  ]
-}
-EOF
-    systemctl restart docker 2>/dev/null || true
-    echo "镜像加速已配置"
+# 1. 安装 Go
+echo "[1/6] 安装 Go..."
+if ! command -v go &>/dev/null; then
+    yum install -y wget git
+    wget -q https://go.dev/dl/go1.24.0.linux-amd64.tar.gz -O /tmp/go.tar.gz
+    tar -C /usr/local -xzf /tmp/go.tar.gz
+    echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
+    export PATH=$PATH:/usr/local/go/bin
+    rm /tmp/go.tar.gz
 fi
+echo "Go: $(go version)"
 
-# 安装 Git
-echo "[1/5] 安装 Git..."
-yum install -y git 2>/dev/null || true
+# 2. 配置 Go 国内代理
+echo "[2/6] 配置 Go 代理..."
+go env -w GOPROXY=https://goproxy.cn,direct
 
-# 创建目录
-echo "[2/5] 准备目录..."
+# 3. 创建目录
+echo "[3/6] 创建目录..."
 mkdir -p /data/music/{uploads/audio,uploads/covers,data,logs}
 
-# 克隆代码
-echo "[3/5] 拉取代码..."
+# 4. 拉取代码
+echo "[4/6] 拉取代码..."
 if [ -d "/data/music/music-server" ]; then
-    cd /data/music/music-server && git pull
+    cd /data/music/music-server
+    git pull
+    git checkout main
 else
-    cd /data/music && git clone https://github.com/zhiluo0719/music-server.git
+    cd /data/music
+    git clone https://github.com/zhiluo0719/music-server.git
+    cd music-server
 fi
 
-# 构建
-echo "[4/5] 构建镜像(首次较慢，请耐心等待)..."
-cd /data/music/music-server
-docker build -t music-server .
+# 5. 编译
+echo "[5/6] 编译..."
+export PATH=$PATH:/usr/local/go/bin
+go mod tidy
+CGO_ENABLED=0 go build -o server ./cmd/server/
+echo "编译完成: $(ls -lh server)"
 
-# 启动
-echo "[5/5] 启动服务..."
-docker stop music-server 2>/dev/null || true
-docker rm music-server 2>/dev/null || true
-docker run -d --name music-server --restart always \
-    -p 3001:3001 \
-    -v /data/music/uploads:/app/uploads \
-    -v /data/music/data:/app/data \
-    -v /data/music/logs:/app/logs \
-    -e PORT=3001 -e TZ=Asia/Shanghai \
-    music-server
+# 6. 创建服务并启动
+echo "[6/6] 部署服务..."
+
+# 停止旧进程
+pkill -f "./server" 2>/dev/null || true
+
+# 复制到运行目录
+cp server /data/music/
+cp -r public /data/music/ 2>/dev/null || true
+
+# 创建 systemd 服务
+cat > /etc/systemd/system/music-server.service << 'EOF'
+[Unit]
+Description=Music Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/music
+ExecStart=/data/music/server
+Restart=always
+RestartSec=5
+Environment=PORT=3001
+Environment=TZ=Asia/Shanghai
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # 开放端口
 firewall-cmd --add-port=3001/tcp --permanent 2>/dev/null && firewall-cmd --reload 2>/dev/null || true
 
+# 启动
+systemctl daemon-reload
+systemctl enable music-server
+systemctl restart music-server
+
 echo ""
-echo "部署完成! http://119.45.205.187:3001"
-echo "日志: docker logs -f music-server"
+echo "=== 部署完成! ==="
+echo "访问: http://119.45.205.187:3001"
+echo "状态: systemctl status music-server"
+echo "日志: journalctl -u music-server -f"
